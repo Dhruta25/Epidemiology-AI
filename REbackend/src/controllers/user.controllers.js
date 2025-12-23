@@ -1,8 +1,9 @@
 import {asyncHandler} from "../utils/asyncHandler.js"
 import {apiError} from "../utils/apiError.js"
 import { User } from "../models/user.models.js";
-import { uploadOnCloudinary } from "../utils/cloudinary.js"
+import { uploadOnCloudinary , deleteFromCloudinary} from "../utils/cloudinary.js"
 import { apiResponse } from "../utils/apiResponse.js";
+import { json } from "express";
 
 
 
@@ -50,16 +51,18 @@ const registerUser = asyncHandler(async(req,res) => {
     if(sameemailexist){
         throw new apiError(403,"Email already registered");
     }
-
+    
 
     const profilePath = req?.file?.path;
-    const profile = uploadOnCloudinary(profilePath);
-
+    console.log(profilePath)
+    const profile = await uploadOnCloudinary(profilePath);
+    console.log(profile)
     const user = await User.create({
         username: username,
         email: email,
         password: password,
-        profile: profile?.url || ""
+        profile: profile?.url || "",
+        profile_id: profile?.public_id || ""
     });
 
     
@@ -68,10 +71,17 @@ const registerUser = asyncHandler(async(req,res) => {
     if(!ispresent){
         throw new apiError(500,"Opps !!!! Registration failed....Try again")
     }
+    const {refreshToken , accessToken} = await generateRefreshAccessToken(user._id)
      
    // console.log(ispresent);
-    
-    res.status(200).json(
+    const options = {
+        httpOnly: true,
+        secure: true
+    }
+    return res.status(200)
+     .cookie("accessToken",accessToken,options)
+    .cookie("refreshToken",refreshToken,options)
+    .json(
         new apiResponse(200,ispresent,"registration Successfully...")
     )
 
@@ -87,14 +97,19 @@ const loginUser = asyncHandler(async(req,res) => {
     if(!password){
         throw new apiError(401,"Password is required")
     }
-    if(!(email === email.toLowerCase()) || !email.includes("@")){
-        throw new apiError(403,"Invalid email..")
-    }
-    const user = await User.findOne({email});
+   if(!(email === email.toLowerCase()) || !email.includes("@")){
+       throw new apiError(403,"Invalid email..")
+   }
+    //console.log(email);
+    const user = await User.findOne({email:email});
+    //console.log(user);
+    //const users = await User.find({});
+    //console.log("TOTAL USERS:", users.length);
+
     if(!user){
         throw new apiError(404,"No account exist with this mail")
     }
-    const validpassword = user.isPasswordCorrect(password);
+    const validpassword = await user.isPasswordCorrect(password);
 
     if(!validpassword){
         throw new apiError(405,"Password is not correct")
@@ -108,7 +123,7 @@ const loginUser = asyncHandler(async(req,res) => {
     }
 
     const newuser = await User.findById(user._id).select("-password -refreshToken")
-    res.status(200)
+    return res.status(200)
     .cookie("accessToken",accessToken,options)
     .cookie("refreshToken",refreshToken,options)
     .json(
@@ -135,7 +150,7 @@ const logoutUser = asyncHandler(async(req,res) => {
         httpOnly: true,
         secure: true
     }
-    res.status(200)
+    return res.status(200)
     .clearCookie("accessToken",options)
     .clearCookie("refreshToken",options)
     .json(
@@ -144,4 +159,86 @@ const logoutUser = asyncHandler(async(req,res) => {
 })
 
 
-export {registerUser,loginUser,logoutUser}
+const changeCurrentPassword = asyncHandler(async(req,res) => {
+    console.log(req.body)
+    const {oldPassword,newPassword,confirmPassword} = req.body
+    console.log(oldPassword);
+    console.log(newPassword);
+    console.log(confirmPassword);
+    if(!oldPassword){
+        throw new apiError(400,"Old password is required");
+    }
+    if(!newPassword){
+        throw new apiError(400,"New password is required");
+    }
+    if(!(confirmPassword === newPassword)){
+        throw new apiError(404,"newpassword and confirmpassword should be equal")
+    }
+
+    const user = await User.findById(req?.user._id);
+    if(!user){
+        throw new apiError(404,"User not found")
+    }
+   const validation = await user.isPasswordCorrect(oldPassword);
+
+   if(!validation){
+      throw new apiError(406,"Oldpassword is incorrect");
+   }
+   
+   user.password = newPassword;
+   await user.save()
+
+   return res.status(200).json(
+     new apiResponse(200,{},"Password change successfully...")
+   )
+       
+})
+
+
+const getProfile = asyncHandler(async(req,res) => {
+    
+    return res.status(200).json(
+        new apiResponse(200,req?.user,"Profile loaded successfully")
+    );
+})
+
+
+const updateProfile = asyncHandler(async(req,res) => {
+      const newprofilepath = req?.file?.path;
+
+      if(!newprofilepath){
+         throw new apiError(400,"New profile required");
+      }
+
+      const newprofile = await uploadOnCloudinary(newprofilepath);
+      if(!newprofile){
+        throw new apiError(500,"Problem in uploading new profile picture")
+      }
+    
+      const user = await User.findById(req?.user?._id);
+      if(!user){
+        throw new apiError(500,"User not found");
+      }
+      //console.log(user.profile_id);
+      if(user.profile_id){
+        await deleteFromCloudinary(user.profile_id)
+      }
+
+     user.profile = newprofile.url;
+     user.profile_id = newprofile.public_id;
+     await user.save();
+
+     return res.status(200).json(
+        new apiResponse(200,{},"profile picture changed")
+     )
+
+})
+
+
+export {registerUser
+    ,loginUser
+    ,logoutUser
+    ,changeCurrentPassword
+    ,getProfile
+    ,updateProfile
+}
