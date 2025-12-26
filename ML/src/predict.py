@@ -1,19 +1,41 @@
+import os
 import joblib
 import pandas as pd
 import numpy as np
+from functools import lru_cache
 
-model = joblib.load("/Users/dhrutamacm2/Desktop/Epidemiology/ML/models/disease_model.pkl")
-label_encoder = joblib.load("/Users/dhrutamacm2/Desktop/Epidemiology/ML/models/label_encoder.pkl")
+
+# Build a path that works both locally & on Render
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+MODEL_DIR = os.path.join(BASE_DIR, "..", "models")
+
+MODEL_PATH = os.path.join(MODEL_DIR, "disease_model.pkl")
+ENCODER_PATH = os.path.join(MODEL_DIR, "label_encoder.pkl")
+
+
+@lru_cache
+def load_model():
+    return joblib.load(MODEL_PATH)
+
+
+@lru_cache
+def load_encoder():
+    return joblib.load(ENCODER_PATH)
+
 
 def predict_disease(input_data: dict):
     """
     input_data: dictionary of features
     returns: disease name
     """
+    model = load_model()
+    label_encoder = load_encoder()
+
     df = pd.DataFrame([input_data])
     prediction = model.predict(df)
     disease = label_encoder.inverse_transform(prediction)[0]
     return disease
+
 
 if __name__ == "__main__":
     sample_input = {
