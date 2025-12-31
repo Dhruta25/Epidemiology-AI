@@ -6,6 +6,7 @@ import { Routes,Route } from 'react-router-dom'
 import Dashboard from './Dashboard.jsx'
 import Login from './Login.jsx'
 import Register from './Register.jsx'
+import Home from './Home.jsx'
 function App() {
   
 
@@ -14,7 +15,7 @@ function App() {
         <Route path="/" element={<Dashboard />} />
         <Route path="/register" element={<Register />} />
        <Route path="/login" element={<Login />} />
-       
+       <Route path='/home' element={<Home/>}/>
     </Routes>
   )
 }
